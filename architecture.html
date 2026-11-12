@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>First-fill fax intake — logical architecture</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: transparent; }
+  body { color: var(--foreground); font-size: 14px; line-height: 1.45; }
+  .wrap { width: 1180px; }
+
+  header { display: flex; align-items: baseline; gap: 12px; margin: 0 0 14px 2px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #34d399; flex: 0 0 auto;
+         align-self: center; animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: .35; transform: scale(.85); } 50% { opacity: 1; transform: scale(1); } }
+  h1 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: .01em; }
+  .sub { font-size: 12px; color: var(--muted-foreground); margin: 0 0 16px 2px; }
+
+  .frame { border: 1px solid var(--border); border-radius: 10px; padding: 6px 0 0 0; overflow: hidden; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 13px 15px; }
+  .card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .card-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+  .card-dot.e { background: #34d399; } .card-dot.r { background: #fb7185; } .card-dot.v { background: #a78bfa; }
+  .card h3 { font-size: 12px; font-weight: 600; margin: 0; letter-spacing: .01em; }
+  .card ul { margin: 0; padding: 0; list-style: none; }
+  .card li { font-size: 11.5px; color: var(--muted-foreground); line-height: 1.5; padding-left: 11px; position: relative; }
+  .card li::before { content: "·"; position: absolute; left: 0; opacity: .7; }
+
+  footer { display: flex; justify-content: space-between; margin-top: 14px; padding: 0 2px;
+           font-size: 10.5px; color: var(--muted-foreground); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header><span class="dot"></span><h1>First-fill fax intake — logical architecture</h1></header>
+<p class="sub">Draft · 2026-11-09 · logical view, not a deployment view · nothing here is probed from a live system</p>
+
+<div class="frame">
+<svg viewBox="0 0 1180 1706" width="1180" height="1706" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" style="stroke:var(--border)" stroke-width="0.5" opacity="0.55"/>
+    </pattern>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill:var(--muted-foreground)"/>
+    </marker>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#fb7185"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1180" height="1706" fill="url(#grid)"/>
+
+  <!-- ===================== FLOW ARROWS (behind boxes) ===================== -->
+  <g stroke-linecap="round" fill="none">
+    <g style="stroke:var(--muted-foreground)" stroke-width="1.4" marker-end="url(#ar)">
+      <path d="M340,186 V220"/>
+      <path d="M340,348 V382"/>
+      <path d="M340,528 V562"/>
+      <path d="M340,690 V724"/>
+      <path d="M340,870 V904"/>
+      <path d="M340,1014 V1048"/>
+      <path d="M340,1176 V1210"/>
+      <path d="M340,1356 V1390"/>
+      <path d="M340,1500 V1534"/>
+      <path d="M690,1160 L614,1112"/>
+      <path d="M668,800 H614"/>
+      <path d="M668,960 H614"/>
+    </g>
+    <!-- sanitizer branches to the sensors -->
+    <path d="M610,262 H650 V455 H688" style="stroke:var(--muted-foreground)" stroke-width="1.4"
+          stroke-dasharray="4,4" marker-end="url(#ar)"/>
+    <!-- advisory flags go to the human queue -->
+    <path d="M1110,455 H1150 V1283 H614" stroke="#fb7185" stroke-width="1.2" stroke-dasharray="5,4"
+          opacity="0.75" marker-end="url(#arr)"/>
+  </g>
+
+  <!-- ===================== BOUNDARIES ===================== -->
+  <!-- trust boundary around ingress -->
+  <text x="56" y="54" font-size="8.5" letter-spacing="1.2" fill="#fb7185" opacity="0.95">TRUST BOUNDARY — UNAUTHENTICATED SENDER</text>
+  <rect x="54" y="64" width="572" height="134" rx="10" fill="none" stroke="#fb7185" stroke-width="1"
+        stroke-dasharray="4,4" opacity="0.55"/>
+
+  <!-- model boundary -->
+  <text x="56" y="362" font-size="8.5" letter-spacing="1.2" fill="#fb7185" opacity="0.95">MODEL BOUNDARY — NO TOOLS · NO NETWORK · NO WRITES · NO MEMORY</text>
+  <rect x="54" y="370" width="572" height="170" rx="10" fill="none" stroke="#fb7185" stroke-width="1"
+        stroke-dasharray="4,4" opacity="0.75"/>
+
+  <!-- ===================== MAIN PIPELINE ===================== -->
+
+  <!-- 0 ingress -->
+  <g>
+    <rect x="70" y="76" width="540" height="110" rx="6" style="fill:var(--card)"/>
+    <rect x="70" y="76" width="540" height="110" rx="6" style="fill:rgba(148,163,184,0.13);stroke:#94a3b8;stroke-width:1.5"/>
+    <text x="88" y="103" style="fill:var(--foreground);font-size:13px;font-weight:600">0 · Fax ingress</text>
+    <text x="88" y="122" style="fill:var(--muted-foreground);font-size:10px">RightFax queue — unauthenticated, unattributable</text>
+    <circle cx="92" cy="139" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="142" style="fill:var(--muted-foreground);font-size:10px">Formats are arbitrary: TIFF, PDF, PNG, any DPI, any layout</text>
+    <circle cx="92" cy="157" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="160" style="fill:var(--muted-foreground);font-size:10px">CSID / TSI header is forgeable — never a sender identity</text>
+    <circle cx="92" cy="175" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="178" style="fill:var(--muted-foreground);font-size:10px">A misdialled fax puts another patient's PHI into this queue</text>
+  </g>
+
+  <!-- 1 sanitizer -->
+  <g>
+    <rect x="70" y="220" width="540" height="128" rx="6" style="fill:var(--card)"/>
+    <rect x="70" y="220" width="540" height="128" rx="6" style="fill:rgba(34,211,238,0.13);stroke:#22d3ee;stroke-width:1.5"/>
+    <text x="88" y="247" style="fill:var(--foreground);font-size:13px;font-weight:600">1 · Sanitizer</text>
+    <text x="88" y="266" style="fill:var(--muted-foreground);font-size:10px">container flattening — no content interpretation</text>
+    <circle cx="92" cy="283" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="286" style="fill:var(--muted-foreground);font-size:10px">Rasterize at fixed DPI; one image per page; deskew, denoise</text>
+    <circle cx="92" cy="301" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="304" style="fill:var(--muted-foreground);font-size:10px">Discard the container: text layer, annotations, form fields, embedded files, JS</text>
+    <circle cx="92" cy="319" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="322" style="fill:var(--muted-foreground);font-size:10px">Strip the fax header band (TSI/CSID, timestamp)</text>
+    <circle cx="92" cy="337" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="340" style="fill:var(--muted-foreground);font-size:10px">Page-of-N check · packet hash · duplicate dedupe → PageImage[]</text>
+  </g>
+
+  <!-- 2 vlm -->
+  <g>
+    <rect x="70" y="382" width="540" height="146" rx="6" style="fill:var(--card)"/>
+    <rect x="70" y="382" width="540" height="146" rx="6" style="fill:rgba(251,191,36,0.15);stroke:#fbbf24;stroke-width:1.5"/>
+    <text x="88" y="409" style="fill:var(--foreground);font-size:13px;font-weight:600">2 · Transcriber — vision-language model</text>
+    <text x="88" y="428" style="fill:var(--muted-foreground);font-size:10px">the only model in the pipeline</text>
+    <circle cx="92" cy="445" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="448" style="fill:var(--muted-foreground);font-size:10px">Input: PageImage only. Output: strict JSON against a versioned schema</text>
+    <circle cx="92" cy="463" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="466" style="fill:var(--muted-foreground);font-size:10px">Patient, prescriber, drug, plan, document type, page-of-N</text>
+    <circle cx="92" cy="481" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="484" style="fill:var(--muted-foreground);font-size:10px">Every value carries a bbox + page — pixel provenance is mandatory</text>
+    <circle cx="92" cy="499" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="502" style="fill:var(--muted-foreground);font-size:10px">Free text confined to one quarantined notes field — stored, never re-parsed</text>
+    <circle cx="92" cy="517" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="520" style="fill:var(--muted-foreground);font-size:10px">Cannot express the routing decision; off-whitelist URLs are dropped</text>
+  </g>
+
+  <!-- 3 validator -->
+  <g>
+    <rect x="70" y="562" width="540" height="128" rx="6" style="fill:var(--card)"/>
+    <rect x="70" y="562" width="540" height="128" rx="6" style="fill:rgba(52,211,153,0.13);stroke:#34d399;stroke-width:1.5"/>
+    <text x="88" y="589" style="fill:var(--foreground);font-size:13px;font-weight:600">3 · Validator</text>
+    <text x="88" y="608" style="fill:var(--muted-foreground);font-size:10px">deterministic gates — code, not the model</text>
+    <circle cx="92" cy="625" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="628" style="fill:var(--muted-foreground);font-size:10px">Schema, type and enum enforcement; un-grounded values dropped</text>
+    <circle cx="92" cy="643" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="646" style="fill:var(--muted-foreground);font-size:10px">Checksums: NPI Luhn, DEA checksum; NDC normalised to 11-digit</text>
+    <circle cx="92" cy="661" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="664" style="fill:var(--muted-foreground);font-size:10px">Sig → implied days supply vs written; quantity vs days supply</text>
+    <circle cx="92" cy="679" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="682" style="fill:var(--muted-foreground);font-size:10px">Signature present · date inside the state validity window</text>
+  </g>
+
+  <!-- 4 reconciler -->
+  <g>
+    <rect x="70" y="724" width="540" height="146" rx="6" style="fill:var(--card)"/>
+    <rect x="70" y="724" width="540" height="146" rx="6" style="fill:rgba(52,211,153,0.13);stroke:#34d399;stroke-width:1.5"/>
+    <text x="88" y="751" style="fill:var(--foreground);font-size:13px;font-weight:600">4 · Reconciler</text>
+    <text x="88" y="770" style="fill:var(--muted-foreground);font-size:10px">agreement against something outside the fax</text>
+    <circle cx="92" cy="787" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="790" style="fill:var(--muted-foreground);font-size:10px">Drug triangle: name ↔ strength ↔ form ↔ NDC ↔ package must agree</text>
+    <circle cx="92" cy="805" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="808" style="fill:var(--muted-foreground);font-size:10px">LASA gate: near a confusable pair + matching partner strength → UNRESOLVED</text>
+    <circle cx="92" cy="823" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="826" style="fill:var(--muted-foreground);font-size:10px">Plan resolution: BIN · PCN · group · member ID must resolve to one plan</text>
+    <circle cx="92" cy="841" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="844" style="fill:var(--muted-foreground);font-size:10px">Prescriber authority: NPI ↔ DEA ↔ state licence ↔ schedule / REMS authority</text>
+    <circle cx="92" cy="859" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="862" style="fill:var(--muted-foreground);font-size:10px">Second-pass agreement on the critical set → SourceSuspect flags</text>
+  </g>
+
+  <!-- 5 classifier -->
+  <g>
+    <rect x="70" y="904" width="540" height="110" rx="6" style="fill:var(--card)"/>
+    <rect x="70" y="904" width="540" height="110" rx="6" style="fill:rgba(52,211,153,0.13);stroke:#34d399;stroke-width:1.5"/>
+    <text x="88" y="931" style="fill:var(--foreground);font-size:13px;font-weight:600">5 · Classifier</text>
+    <text x="88" y="950" style="fill:var(--muted-foreground);font-size:10px">a lookup, not a model judgement</text>
+    <circle cx="92" cy="967" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="970" style="fill:var(--muted-foreground);font-size:10px">Known patient? × known therapy? × transfer-in?</text>
+    <circle cx="92" cy="985" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="988" style="fill:var(--muted-foreground);font-size:10px">New patient, new therapy or transfer → FIRST_FILL; else → refill queue</text>
+    <circle cx="92" cy="1003" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="1006" style="fill:var(--muted-foreground);font-size:10px">Document triage: PA, clinicals, other — never inferred from appearance alone</text>
+  </g>
+
+  <!-- 6 readiness -->
+  <g>
+    <rect x="70" y="1048" width="540" height="128" rx="6" style="fill:var(--card)"/>
+    <rect x="70" y="1048" width="540" height="128" rx="6" style="fill:rgba(52,211,153,0.13);stroke:#34d399;stroke-width:1.5"/>
+    <text x="88" y="1075" style="fill:var(--foreground);font-size:13px;font-weight:600">6 · Readiness gate</text>
+    <text x="88" y="1094" style="fill:var(--muted-foreground);font-size:10px">does the packet actually support starting a first fill?</text>
+    <circle cx="92" cy="1111" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="1114" style="fill:var(--muted-foreground);font-size:10px">Checklist: demographics, valid Rx, benefits, PA, clinicals, REMS, consents</text>
+    <circle cx="92" cy="1129" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="1132" style="fill:var(--muted-foreground);font-size:10px">Missing items become a precise callback question to the prescriber's office</text>
+    <circle cx="92" cy="1147" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="1150" style="fill:var(--muted-foreground);font-size:10px">READY · NEEDS_INFO · UNRESOLVED — never a default</text>
+    <circle cx="92" cy="1165" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="1168" style="fill:var(--muted-foreground);font-size:10px">First-fill rule API consulted here, by code</text>
+  </g>
+
+  <!-- 7 human -->
+  <g>
+    <rect x="70" y="1210" width="540" height="146" rx="6" style="fill:var(--card)"/>
+    <rect x="70" y="1210" width="540" height="146" rx="6" style="fill:rgba(167,139,250,0.15);stroke:#a78bfa;stroke-width:1.5"/>
+    <text x="88" y="1237" style="fill:var(--foreground);font-size:13px;font-weight:600">7 · Human commit</text>
+    <text x="88" y="1256" style="fill:var(--muted-foreground);font-size:10px">the only place an order becomes real</text>
+    <circle cx="92" cy="1273" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="1276" style="fill:var(--muted-foreground);font-size:10px">Pre-filled screen with source crops, flags and the prepared callback script</text>
+    <circle cx="92" cy="1291" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="1294" style="fill:var(--muted-foreground);font-size:10px">Source-suspect and model-unsure are separate reason codes, separate queues</text>
+    <circle cx="92" cy="1309" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="1312" style="fill:var(--muted-foreground);font-size:10px">Every field the technician edits is logged — that is the labelled corpus</text>
+    <circle cx="92" cy="1327" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="1330" style="fill:var(--muted-foreground);font-size:10px">No auto-correct: substitution is an explicit, recorded human action</text>
+    <circle cx="92" cy="1345" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="1348" style="fill:var(--muted-foreground);font-size:10px">Commit calls the order API from code, never from the model</text>
+  </g>
+
+  <!-- 8 order api -->
+  <g>
+    <rect x="70" y="1390" width="540" height="110" rx="6" style="fill:var(--card)"/>
+    <rect x="70" y="1390" width="540" height="110" rx="6" style="fill:rgba(148,163,184,0.13);stroke:#94a3b8;stroke-width:1.5"/>
+    <text x="88" y="1417" style="fill:var(--foreground);font-size:13px;font-weight:600">8 · Order API</text>
+    <text x="88" y="1436" style="fill:var(--muted-foreground);font-size:10px">existing service — unchanged by this design</text>
+    <circle cx="92" cy="1453" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="1456" style="fill:var(--muted-foreground);font-size:10px">Creates the first-fill order</text>
+    <circle cx="92" cy="1471" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="1474" style="fill:var(--muted-foreground);font-size:10px">Called only by deterministic code, after human commit</text>
+    <circle cx="92" cy="1489" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="102" y="1492" style="fill:var(--muted-foreground);font-size:10px">No model credential exists for this endpoint</text>
+  </g>
+
+  <!-- ===================== RIGHT RAIL ===================== -->
+
+  <!-- injection sensors -->
+  <g>
+    <rect x="690" y="382" width="420" height="146" rx="6" style="fill:var(--card)"/>
+    <rect x="690" y="382" width="420" height="146" rx="6" style="fill:rgba(251,113,133,0.13);stroke:#fb7185;stroke-width="1.5" stroke-dasharray="5,3"/>
+    <text x="706" y="409" style="fill:var(--foreground);font-size:12px;font-weight:600">Injection sensors</text>
+    <text x="706" y="428" style="fill:var(--muted-foreground);font-size:10px">advisory only — never a boundary by itself</text>
+    <circle cx="710" cy="445" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="720" y="448" style="fill:var(--muted-foreground);font-size:10px">Off-layout and low-contrast text detector</text>
+    <circle cx="710" cy="463" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="720" y="466" style="fill:var(--muted-foreground);font-size:10px">Instruction-lexicon scan ("ignore previous", "system:")</text>
+    <circle cx="710" cy="481" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="720" y="484" style="fill:var(--muted-foreground);font-size:10px">Separate process and model from the transcriber</text>
+    <circle cx="710" cy="499" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="720" y="502" style="fill:var(--muted-foreground);font-size:10px">Grounding check: tokens not derivable from the image rejected</text>
+    <circle cx="710" cy="517" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="720" y="520" style="fill:var(--muted-foreground);font-size:10px">Emits AnomalyFlags[] → human queue; never gates alone</text>
+  </g>
+
+  <!-- sources group -->
+  <rect x="690" y="680" width="420" height="392" rx="12" fill="none" stroke="#a78bfa" stroke-width="1"
+        stroke-dasharray="8,4" opacity="0.6"/>
+  <text x="706" y="702" font-size="8.5" letter-spacing="1.1" fill="#a78bfa" opacity="0.95">DETERMINISM SOURCES — READ-ONLY LOOKUPS</text>
+  <text x="706" y="716" style="fill:var(--muted-foreground);font-size:9.5px">consumed by the reconciler and classifier — never by the model</text>
+
+  <g>
+    <rect x="706" y="720" width="388" height="58" rx="6" style="fill:var(--card)"/>
+    <rect x="706" y="720" width="388" height="58" rx="6" style="fill:rgba(167,139,250,0.13);stroke:#a78bfa;stroke-width="1.2"/>
+    <text x="722" y="754" style="fill:var(--foreground);font-size:10.5px">Drug file · LASA / ISMP confusables</text>
+  </g>
+  <g>
+    <rect x="706" y="788" width="388" height="58" rx="6" style="fill:var(--card)"/>
+    <rect x="706" y="788" width="388" height="58" rx="6" style="fill:rgba(167,139,250,0.13);stroke:#a78bfa;stroke-width="1.2"/>
+    <text x="722" y="822" style="fill:var(--foreground);font-size:10.5px">Eligibility · plan table (BIN / PCN / group)</text>
+  </g>
+  <g>
+    <rect x="706" y="856" width="388" height="58" rx="6" style="fill:var(--card)"/>
+    <rect x="706" y="856" width="388" height="58" rx="6" style="fill:rgba(167,139,250,0.13);stroke:#a78bfa;stroke-width="1.2"/>
+    <text x="722" y="890" style="fill:var(--foreground);font-size:10.5px">Prescriber registry (NPI / DEA / licence)</text>
+  </g>
+  <g>
+    <rect x="706" y="924" width="388" height="58" rx="6" style="fill:var(--card)"/>
+    <rect x="706" y="924" width="388" height="58" rx="6" style="fill:rgba(167,139,250,0.13);stroke:#a78bfa;stroke-width="1.2"/>
+    <text x="722" y="958" style="fill:var(--foreground);font-size:10.5px">eRx + claim history (if joinable)</text>
+  </g>
+  <g>
+    <rect x="706" y="992" width="388" height="58" rx="6" style="fill:var(--card)"/>
+    <rect x="706" y="992" width="388" height="58" rx="6" style="fill:rgba(167,139,250,0.13);stroke:#a78bfa;stroke-width="1.2"/>
+    <text x="722" y="1026" style="fill:var(--foreground);font-size:10.5px">Patient &amp; therapy book</text>
+  </g>
+
+  <!-- bus stubs -->
+  <g style="stroke:#a78bfa" stroke-width="1.1" opacity="0.7">
+    <path d="M706,749 H668"/><path d="M706,817 H668"/><path d="M706,885 H668"/>
+    <path d="M706,953 H668"/><path d="M706,1021 H668"/>
+    <path d="M668,749 V1021"/>
+  </g>
+
+  <!-- rule api -->
+  <g>
+    <rect x="690" y="1096" width="420" height="128" rx="6" style="fill:var(--card)"/>
+    <rect x="690" y="1096" width="420" height="128" rx="6" style="fill:rgba(52,211,153,0.13);stroke:#34d399;stroke-width:1.5"/>
+    <text x="706" y="1123" style="fill:var(--foreground);font-size:12px;font-weight:600">First-fill rule API</text>
+    <text x="706" y="1142" style="fill:var(--muted-foreground);font-size:10px">deterministic service</text>
+    <circle cx="710" cy="1159" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="720" y="1162" style="fill:var(--muted-foreground);font-size:10px">Serves the first-fill rules</text>
+    <circle cx="710" cy="1177" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="720" y="1180" style="fill:var(--muted-foreground);font-size:10px">Invoked by code with validated fields</text>
+    <circle cx="710" cy="1195" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="720" y="1198" style="fill:var(--muted-foreground);font-size:10px">No-match is an outcome: UNRESOLVED</text>
+    <circle cx="710" cy="1213" r="2" style="fill:var(--muted-foreground)" opacity="0.8"/>
+    <text x="720" y="1216" style="fill:var(--muted-foreground);font-size:10px">The model may never choose among candidates</text>
+  </g>
+
+  <!-- ===================== AUDIT BAND ===================== -->
+  <g>
+    <rect x="70" y="1534" width="1040" height="80" rx="6" style="fill:var(--card)"/>
+    <rect x="70" y="1534" width="1040" height="80" rx="6" style="fill:rgba(148,163,184,0.11);stroke:#94a3b8;stroke-width="1" stroke-dasharray="6,4"/>
+    <text x="88" y="1561" style="fill:var(--foreground);font-size:12px;font-weight:600">Audit ledger — append-only</text>
+    <text x="88" y="1580" style="fill:var(--muted-foreground);font-size:10px">page hashes · model + prompt version · raw model output · gated output · anomaly flags · human edits · decision · actor</text>
+    <text x="88" y="1598" style="fill:var(--muted-foreground);font-size:10px" opacity="0.8">Every stage writes. This is what makes a defect reviewable after the fact, and what a payer audit will ask for.</text>
+  </g>
+
+  <!-- ===================== LEGEND ===================== -->
+  <g font-size="9.5">
+    <g><rect x="70" y="1654" width="12" height="12" rx="3" style="fill:rgba(148,163,184,0.13);stroke:#94a3b8;stroke-width:1.2"/>
+       <text x="88" y="1663" style="fill:var(--muted-foreground)">External / existing</text></g>
+    <g><rect x="250" y="1654" width="12" height="12" rx="3" style="fill:rgba(34,211,238,0.13);stroke:#22d3ee;stroke-width:1.2"/>
+       <text x="268" y="1663" style="fill:var(--muted-foreground)">Preprocessing</text></g>
+    <g><rect x="430" y="1654" width="12" height="12" rx="3" style="fill:rgba(251,191,36,0.15);stroke:#fbbf24;stroke-width:1.2"/>
+       <text x="448" y="1663" style="fill:var(--muted-foreground)">Model (untrusted component)</text></g>
+    <g><rect x="610" y="1654" width="12" height="12" rx="3" style="fill:rgba(52,211,153,0.13);stroke:#34d399;stroke-width:1.2"/>
+       <text x="628" y="1663" style="fill:var(--muted-foreground)">Deterministic gate</text></g>
+    <g><rect x="790" y="1654" width="12" height="12" rx="3" style="fill:rgba(167,139,250,0.13);stroke:#a78bfa;stroke-width:1.2"/>
+       <text x="808" y="1663" style="fill:var(--muted-foreground)">Human / data source</text></g>
+    <g><rect x="970" y="1654" width="12" height="12" rx="3" style="fill:rgba(251,113,133,0.13);stroke:#fb7185;stroke-width="1.2" stroke-dasharray="4,3"/>
+       <text x="988" y="1663" style="fill:var(--muted-foreground)">Advisory / boundary</text></g>
+  </g>
+
+</svg>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-head"><span class="card-dot e"></span><h3>The boundary that carries the load</h3></div>
+    <ul>
+      <li>The model emits fields; code calls every API; a human commits.</li>
+      <li>No tools, no credentials, no memory — an injected instruction has nothing to reach.</li>
+      <li>Prompt hardening and detectors are dampeners. This is the boundary.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="card-dot r"></span><h3>Three error sources, three queues</h3></div>
+    <ul>
+      <li>Perception — a misread digit. Fixed by a second pass and provenance.</li>
+      <li>Adversarial — text that instructs. Fixed by removing agency.</li>
+      <li>Source document — a wrong Rx, perfectly legible. Fixed only by outside reconciliation.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="card-dot v"></span><h3>What the model may never do</h3></div>
+    <ul>
+      <li>Choose first fill vs refill, or decide where anything goes.</li>
+      <li>Hold an order-API credential, or act on free text.</li>
+      <li>Auto-correct a source error. Substitution is a recorded human act.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  <span>Logical architecture — layer responsibilities and workflow order</span>
+  <span>draft · unverified · 2026-11-09</span>
+</footer>
+
+</div>
+</body>
+</html>
